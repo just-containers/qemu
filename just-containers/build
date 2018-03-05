@@ -198,7 +198,7 @@ $THISDIR/configure \
   --disable-gcrypt \
   --disable-debug-info \
   --disable-debug-tcg \
-  --enable-docs \
+  --disable-docs \
   --disable-tcg-interpreter \
   --enable-attr \
   --disable-brlapi \
