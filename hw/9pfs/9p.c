@@ -11,6 +11,7 @@
  *
  */
 
+#include <linux/limits.h>
 #include "qemu/osdep.h"
 #include <glib/gprintf.h>
 #include "hw/virtio/virtio.h"
