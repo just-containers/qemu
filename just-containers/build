@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+set -e
+
+TARGET=$1
+
+if [[ -z "${TARGET}" ]] ; then
+    printf "Usage: $0 target\n"
+    exit 1
+fi
+
+HOSTCC=$CC
+
+if [[ -z "$HOSTCC" ]] ; then
+    HOSTCC="cc"
+fi
+
+unset CC CXX LINK AR NM READELF RANLIB
+
+MUSL_CROSS_MAKE_RELEASE=9
+MUSL_CROSS_MAKE_SRC="https://github.com/just-containers/musl-cross-make/releases/download/v${MUSL_CROSS_MAKE_RELEASE}"
+
+arches__aarch64_linux_musl="aarch64"
+arches__i486_linux_musl="x86"
+arches__x86_64_linux_musl="amd64"
+arches__arm_linux_musleabi="arm"
+arches__arm_linux_musleabihf="armhf"
+
+versions__zlib=1.2.11
+versions__gcc=7.2.0
+versions__github_release=0.7.2
+versions__glib=2.55.2
+versions__libffi=3.2.1
+versions__qemu=2.11.1
+
+sources__zlib="https://zlib.net/zlib-${versions__zlib}.tar.gz"
+sources__gcc="$MUSL_CROSS_MAKE_SRC/gcc-${versions__gcc}-${TARGET}.tar.xz"
+sources__github_release="https://github.com/aktau/github-release/releases/download/v${versions__github_release}/linux-amd64-github-release.tar.bz2"
+sources__gcc_manifest="${MUSL_CROSS_MAKE_SRC}/gcc-7.2.0-manifest.txt"
+sources__glib="https://ftp.gnome.org/pub/gnome/sources/glib/${versions__glib%.*}/glib-${versions__glib}.tar.xz"
+sources__libffi="ftp://sourceware.org/pub/libffi/libffi-${versions__libffi}.tar.gz"
+
+files__zlib="$(basename ${sources__zlib})"
+files__gcc="$(basename ${sources__gcc})"
+files__gcc_manifest="$(basename ${sources__gcc_manifest})"
+files__github_release="$(basename ${sources__github_release})"
+files__glib="$(basename ${sources__glib})"
+files__libffi="$(basename ${sources__libffi})"
+
+qemu_targets="aarch64-linux-user
+alpha-linux-user
+arm-linux-user
+armeb-linux-user
+cris-linux-user
+hppa-linux-user
+i386-linux-user
+m68k-linux-user
+microblaze-linux-user
+microblazeel-linux-user
+mips-linux-user
+mips64-linux-user
+mips64el-linux-user
+mipsel-linux-user
+mipsn32-linux-user
+mipsn32el-linux-user
+nios2-linux-user
+or1k-linux-user
+ppc-linux-user
+ppc64-linux-user
+ppc64abi32-linux-user
+ppc64le-linux-user
+s390x-linux-user
+sh4-linux-user
+sh4eb-linux-user
+sparc-linux-user
+sparc32plus-linux-user
+sparc64-linux-user
+tilegx-linux-user
+x86_64-linux-user"
+
+qemu_targets="$(printf '%s' "$qemu_targets" | tr '\n' ',')"
+
+TARGET_U="$(printf $TARGET | tr '-' '_')"
+TARGET_S="arches__${TARGET_U}"
+TARGET_S="${!TARGET_S}"
+
+THISDIR=$(pwd)
+ROOTDIR=$THISDIR/just-containers
+DISTDIR=$ROOTDIR/dist
+DOWNLOADDIR=$ROOTDIR/downloads
+BUILDDIR=$ROOTDIR/builds/${TARGET}
+TOOLDIR=$ROOTDIR/tools
+LOGDIR=$ROOTDIR/logs
+
+mkdir -p $DISTDIR/bin
+mkdir -p $DOWNLOADDIR
+mkdir -p $BUILDDIR
+mkdir -p $TOOLDIR/bin
+mkdir -p $LOGDIR
+rm -f $LOGDIR/*${TARGET}*.txt
+
+download_package() {
+    package=$1
+
+    package_file="files__${package}"
+    package_file="${!package_file}"
+
+    package_source="sources__${package}"
+    package_source="${!package_source}"
+
+    if [[ ! -f "$DOWNLOADDIR/${package_file}" ]] ; then
+        printf "Downloading ${package_file}\n"
+        curl -s -R -L -o "$DOWNLOADDIR/${package_file}" \
+          "${package_source}"
+    fi
+}
+
+export PATH="$TOOLDIR/bin:$PATH"
+export PKG_CONFIG_SYSROOT_DIR=$TOOLDIR/$TARGET
+export PKG_CONFIG_LIBDIR=$TOOLDIR/$TARGET/lib/pkgconfig
+
+download_package "zlib"
+download_package "libffi"
+download_package "glib"
+download_package "gcc" "gcc cross-compiler"
+download_package "gcc_manifest" "gcc manifest"
+download_package "github_release" "github-release"
+
+while read -r line; do
+    key=$(printf "${line}" | cut -d"=" -f1)
+    value=$(printf "${line}" | cut -d"=" -f2)
+    case "${key}" in
+        musl|gcc) printf -v "versions__${key}" "%s" "$value" ;;
+    esac
+done < $DOWNLOADDIR/gcc-7.2.0-manifest.txt
+
+tar xf "$DOWNLOADDIR/gcc-7.2.0-${TARGET}.tar.xz" -C $TOOLDIR
+tar xf "$DOWNLOADDIR/${files__github_release}" -C $TOOLDIR/bin --strip-components=3
+
+printf "Building zlib\n"
+tar xf "$DOWNLOADDIR/zlib-${versions__zlib}.tar.gz" -C $BUILDDIR
+cd $BUILDDIR/zlib-${versions__zlib}
+
+CC="$TARGET-gcc" \
+CPP="$TARGET-cpp" \
+AR="$TARGET-ar" \
+RANLIB="$TARGET-ranlib" \
+./configure \
+  --prefix=
+make -j$(nproc)
+make DESTDIR=$TOOLDIR/$TARGET install
+
+printf "Building libffi\n"
+tar xf "$DOWNLOADDIR/${files__libffi}" -C $BUILDDIR
+cd $BUILDDIR/libffi-${versions__libffi}
+
+./configure \
+  --prefix= \
+  --host=${TARGET} \
+  --target=${TARGET}
+make -j$(nproc)
+make DESTDIR=$TOOLDIR/$TARGET install
+
+printf "Building glib\n"
+tar xf "$DOWNLOADDIR/${files__glib}" -C $BUILDDIR
+cd $BUILDDIR/glib-${versions__glib}
+
+./configure \
+  --host=$TARGET \
+  --prefix= \
+  --with-libiconv=no \
+  --with-pcre=internal \
+  --enable-debug=no \
+  --disable-gtk-doc \
+  --disable-fam \
+  --disable-libmount \
+  --enable-static \
+  glib_cv_stack_grows=no \
+  glib_cv_uscore=no
+
+make -j$(nproc)
+make DESTDIR=$TOOLDIR/$TARGET install
+
+printf "Building qemu\n"
+
+mkdir -p $BUILDDIR/qemu
+cd $BUILDDIR/qemu
+set -x
+
+$THISDIR/configure \
+  --cc="${TARGET}-gcc" \
+  --cxx="${TARGET}-g++" \
+  --host-cc="$HOSTCC" \
+  --extra-ldflags="-s" \
+  --disable-bsd-user \
+  --disable-guest-agent \
+  --disable-strip \
+  --disable-werror \
+  --disable-gcrypt \
+  --disable-debug-info \
+  --disable-debug-tcg \
+  --enable-docs \
+  --disable-tcg-interpreter \
+  --enable-attr \
+  --disable-brlapi \
+  --disable-linux-aio \
+  --disable-bzip2 \
+  --disable-bluez \
+  --disable-cap-ng \
+  --disable-curl \
+  --disable-fdt \
+  --disable-glusterfs \
+  --disable-gnutls \
+  --disable-nettle \
+  --disable-gtk \
+  --disable-rdma \
+  --disable-libiscsi \
+  --disable-vnc-jpeg \
+  --disable-kvm \
+  --disable-lzo \
+  --disable-curses \
+  --disable-libnfs \
+  --disable-numa \
+  --disable-opengl \
+  --disable-vnc-png \
+  --disable-rbd \
+  --disable-vnc-sasl \
+  --disable-sdl \
+  --disable-seccomp \
+  --disable-smartcard \
+  --disable-snappy \
+  --disable-spice \
+  --disable-libssh2 \
+  --disable-libusb \
+  --disable-usb-redir \
+  --disable-vde \
+  --disable-vhost-net \
+  --disable-virglrenderer \
+  --disable-virtfs \
+  --disable-vnc \
+  --disable-vte \
+  --disable-xen \
+  --disable-xen-pci-passthrough \
+  --disable-xfsctl \
+  --enable-linux-user \
+  --disable-system \
+  --disable-blobs \
+  --disable-tools \
+  --target-list=${qemu_targets} \
+  --static \
+  --disable-pie
+make -j$(nproc)
+
+qemu_targets="$(printf '%s' "$qemu_targets" | tr ',' ' ')"
+for targ in $qemu_targets ; do
+    plat=$(printf "$targ" | cut -f1 -d'-')
+    cp $targ/qemu-${plat} $DISTDIR/bin/qemu-${plat}-static
+done
+
+tar cvJf $DISTDIR/qemu-${versions__qemu}-${TARGET_S}.tar.xz -C $DISTDIR bin
+rm -f $DISTDIR/release.md
+printf 'Built using `musl-%s`, `zlib-%s`, `libffi-%s`, `glib-%s`\n' \
+  "${versions__musl}" \
+  "${versions__zlib}" \
+  "${versions__libffi}" \
+  "${versions__glib}" > $DISTDIR/release.md
