@@ -140,3 +140,8 @@ trace-dtrace-root.h
 trace-dtrace-root.dtrace
 trace-ust-all.h
 trace-ust-all.c
+/just-containers/downloads
+/just-containers/builds
+/just-containers/tools
+/just-containers/logs
+/just-containers/dist
