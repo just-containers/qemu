@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -e
+
+THISDIR=$(pwd)
+ROOTDIR=$THISDIR/just-containers
+DISTDIR=$ROOTDIR/dist
+DOWNLOADDIR=$ROOTDIR/downloads
+BUILDDIR=$ROOTDIR/builds
+TOOLDIR=$ROOTDIR/tools
+LOGDIR=$ROOTDIR/logs
+
+set -x
+
+rm -rf $DISTDIR
+rm -rf $DOWNLOADDIR
+rm -rf $BUILDDIR
+rm -rf $TOOLDIR
+rm -rf $LOGDIR
+
