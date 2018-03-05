@@ -791,6 +791,11 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
     memset(&info, 0, sizeof(info));
     SDL_VERSION(&info.version);
 
+    if (full_screen) {
+        gui_fullscreen = 1;
+        sdl_grab_start(0);
+    }
+
     for (i = 0;; i++) {
         QemuConsole *con = qemu_console_lookup_by_index(i);
         if (!con) {
@@ -839,11 +844,6 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
             SDL_SetWindowIcon(sdl2_console[0].real_window, image);
         }
         g_free(filename);
-    }
-
-    if (full_screen) {
-        gui_fullscreen = 1;
-        sdl_grab_start(0);
     }
 
     mouse_mode_notifier.notify = sdl_mouse_mode_change;
