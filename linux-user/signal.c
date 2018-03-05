@@ -26,6 +26,13 @@
 #include "target_signal.h"
 #include "trace.h"
 
+#ifndef __SIGRTMIN
+#define __SIGRTMIN 32
+#endif
+#ifndef __SIGRTMAX
+#define __SIGRTMAX (NSIG-1)
+#endif
+
 static struct target_sigaltstack target_sigaltstack_used = {
     .ss_sp = 0,
     .ss_size = 0,
