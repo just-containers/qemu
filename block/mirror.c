@@ -514,7 +514,12 @@ static void mirror_exit(BlockJob *job, void *opaque)
 
     /* Remove target parent that still uses BLK_PERM_WRITE/RESIZE before
      * inserting target_bs at s->to_replace, where we might not be able to get
-     * these permissions. */
+     * these permissions.
+     *
+     * Note that blk_unref() alone doesn't necessarily drop permissions because
+     * we might be running nested inside mirror_drain(), which takes an extra
+     * reference, so use an explicit blk_set_perm() first. */
+    blk_set_perm(s->target, 0, BLK_PERM_ALL, &error_abort);
     blk_unref(s->target);
     s->target = NULL;
 
@@ -724,7 +729,7 @@ static void coroutine_fn mirror_run(void *opaque)
         }
 
         if (s->bdev_length > base_length) {
-            ret = blk_truncate(s->target, s->bdev_length);
+            ret = blk_truncate(s->target, s->bdev_length, NULL);
             if (ret < 0) {
                 goto immediate_exit;
             }
@@ -1146,6 +1151,9 @@ static void mirror_start_job(const char *job_id, BlockDriverState *bs,
                                          BDRV_O_RDWR, errp);
     if (mirror_top_bs == NULL) {
         return;
+    }
+    if (!filter_node_name) {
+        mirror_top_bs->implicit = true;
     }
     mirror_top_bs->total_sectors = bs->total_sectors;
     bdrv_set_aio_context(mirror_top_bs, bdrv_get_aio_context(bs));
