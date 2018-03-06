@@ -30,7 +30,7 @@ versions__gcc=7.2.0
 versions__github_release=0.7.2
 versions__glib=2.55.2
 versions__libffi=3.2.1
-versions__qemu=2.11.1
+versions__qemu=2.10.2
 
 sources__zlib="https://zlib.net/zlib-${versions__zlib}.tar.gz"
 sources__gcc="$MUSL_CROSS_MAKE_SRC/gcc-${versions__gcc}-${TARGET}.tar.xz"
